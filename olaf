@@ -1,0 +1,58 @@
+#!/usr/bin/env python
+import sys
+import subprocess
+import json
+import os.path
+import getpass
+
+def track_process():
+    process_msg = ''
+    for arg in sys.argv[1:]:
+        process_msg += arg + " "
+    task = subprocess.Popen(sys.argv[1:])
+    streamdata = task.communicate()[0]
+    return process_msg, task.returncode
+
+def email_user(f,proc_msg, rc):
+    #email
+    import smtplib
+    fromaddr = f['emailFrom']
+    toaddrs  = f['emailTo']
+    msg = "\r\n".join([
+      "From: "+fromaddr+"",
+      "To: "+toaddrs+"",
+      "Subject: Process "+ proc_msg + " is done",
+      "",
+      "Your process, " +proc_msg+ " has ended with code "+str(rc)
+      ])
+    print msg
+    username = f['emailFrom']
+    password = f['password']
+    server = smtplib.SMTP('smtp.gmail.com:587')
+    server.ehlo()
+    server.starttls()
+    server.login(username,password)
+    server.sendmail(fromaddr, toaddrs, msg)
+    server.quit()
+
+if __name__ == '__main__':
+    if not os.path.isfile('./email.json'): 
+        print "writing to email.json"
+        emailTo = raw_input("Email to send to: ")
+        emailFrom = raw_input("Gmail to send from (you can create one and use it): ")
+        password = getpass.getpass("Password for the gmail account: ")
+        print "this is stored in email.json in "+os.getcwd()+ "if you need to edit it later"
+        data = {
+            "emailTo": emailTo,
+            "emailFrom": emailFrom,
+            "password": password,
+        }
+        f = open('./email.json',"w+")
+        f.write(json.dumps(data))
+        f.close()
+    proc_msg, rc = track_process()
+    f = open('./email.json',"r+")
+    emailFile = f.read()
+    e = json.loads(emailFile)
+    email_user(e,proc_msg, rc)
+
