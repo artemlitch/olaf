@@ -2,18 +2,25 @@
 import sys
 import subprocess
 import json
-import os.path
+import os
 import getpass
 
 def track_process():
     process_msg = ''
     for arg in sys.argv[1:]:
         process_msg += arg + " "
-    task = subprocess.Popen(sys.argv[1:])
-    streamdata = task.communicate()[0]
-    return process_msg, task.returncode
+    task = subprocess.Popen(sys.argv[1:], stdout=subprocess.PIPE)
+    process_stdout = []
+    while True:
+        line = task.stdout.readline()
+        if line != '':
+            process_stdout.append(line.rstrip())
+        else:
+            break
+    process_stdout = '\n'.join(process_stdout)
+    return process_msg, process_stdout, task.returncode
 
-def email_user(f,proc_msg, rc):
+def email_user(f,proc_msg, proc_stdout, rc):
     #email
     import smtplib
     fromaddr = f['emailFrom']
@@ -23,7 +30,7 @@ def email_user(f,proc_msg, rc):
       "To: "+toaddrs+"",
       "Subject: Process "+ proc_msg + " is done",
       "",
-      "Your process, " +proc_msg+ " has ended with code "+str(rc)
+      "Your process, " +proc_msg+ " has ended with code "+str(rc) + "\n The process output was: " + proc_stdout,
       ])
     print msg
     username = f['emailFrom']
@@ -34,10 +41,10 @@ def email_user(f,proc_msg, rc):
     server.login(username,password)
     server.sendmail(fromaddr, toaddrs, msg)
     server.quit()
-
 if __name__ == '__main__':
-    if not os.path.isfile('./email.json'): 
-        print "writing to email.json"
+    home_dir = os.path.expanduser("~")
+    if not os.path.exists(home_dir+'/.olaf') or not os.path.isfile(home_dir+'/.olaf/email.json'): 
+        print "writing to "+home_dir + "/.olaf/email.json"
         emailTo = raw_input("Email to send to: ")
         emailFrom = raw_input("Gmail to send from (you can create one and use it): ")
         password = getpass.getpass("Password for the gmail account: ")
@@ -47,12 +54,13 @@ if __name__ == '__main__':
             "emailFrom": emailFrom,
             "password": password,
         }
-        f = open('./email.json',"w+")
+        if not os.path.exists(home_dir+'/.olaf'):
+            os.makedirs(home_dir+'/.olaf')
+        f = open(home_dir+'/.olaf/email.json',"w+")
         f.write(json.dumps(data))
         f.close()
-    proc_msg, rc = track_process()
-    f = open('./email.json',"r+")
+    proc_msg, proc_stdout, rc = track_process()
+    f = open(home_dir+'/.olaf/email.json',"r+")
     emailFile = f.read()
     e = json.loads(emailFile)
-    email_user(e,proc_msg, rc)
-
+    email_user(e,proc_msg, proc_stdout, rc)
